@@ -5,3 +5,5 @@ In this page, you will see my work throughout the course IE-360.
 ### Homework 0 - Interesting Forecasting Applications in R
 [Here](files/HW-0.html) is my Homework.
 
+### Homework 1 - Google Trends
+[Here](files/ie360hw1.html) is my Homework.
