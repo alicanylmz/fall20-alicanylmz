@@ -1,0 +1,339 @@
+---
+title: "IE360-HW1"
+author: "Alican Yılmaz"
+date: "11/18/2020"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: true
+    code_folding: hide
+ 
+---
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(tidyverse)
+library(lubridate)
+library(plotly)
+library(rmarkdown)
+library(zoo)
+library("readxl")
+```
+
+# Introduction
+
+For this homework, 3 different measures are selected. Time series plot of each measure is plotted to better understand the changes by time in the relative measures. To see if there is any correlation or similarity between the measure and relative keyword search volume [Google Trends](https://trends.google.com/trends/?geo=TR) data of the relative keyword is also plotted, both separately or/and together in the same graph. Most of the comments in this study have been made by visual inspection and/or by the interpretation of the plots. Detailed statistical analysis is omitted. Histogram of the each measure is also plotted to observe  the yearly or monthly changes,if any exists. Finally, boxplots of both real measures and google trends data is also constructed to understand the distribution and yearly variation better. Three measures and relative keywords analyzed  are as followed:
+
+* **Unemployment Rate vs "İş ilanı" keyword**
+* **Exchange Rate vs "ekonomik kriz" keyword**
+* **COVİD-19 vs "karantina" keyword**
+
+*Important Notice: You can reach all the sources at the end of the page. The code for each part can be seen by clicking `Code` box on the upper right corner.*
+
+# Unemployment Rate
+
+For this part, "unemployment rate in Turkey from 2014 to 2020 for each month" has been analyzed. First, the data of unemployment rate is obtained from TÜİK(Turkey Statistical Institute) and a time series graph is constructed with the help of  `ggplot2` package. You can see that unemployment rate has shown cyclical pattern from 2014 to 2016 and a sharp increase is observed during the end 2016 and 2018.Since then, it keeps the increasing trend till 2020.
+
+
+```{r reading data unemployment, message=FALSE, warning=FALSE}
+#Reading Data
+path="C:/Users/Alican/Desktop/Turkey_unemployment.xls"
+my_data <- read_excel(path)
+#Plotting
+my_data %>%
+  mutate(tarih=as.yearmon(tarih)) 
+ggplot_unemployment<-my_data%>%ggplot(.,aes(tarih,Unemployment_Rate))+
+  geom_line(group = 1)+
+  theme(axis.text.x = element_text(angle = 60))+
+  labs(x="Date", y="Unemployment Rate", title="Unemployment Rate by month(2014-2020)")
+ggplotly(ggplot_unemployment)
+
+```
+
+From the graph below, one can easily observe that "iş ilanı" keyword also shows a cyclical pattern. An increase, as in the graph above, is observed during 2016 and after 2018 in the search volume of the keyword. Although not perfectly correlated, there is significant similarity in the trends of both of the graphs as expected. This means, "iş ilanı" keyword is searched significantly more during the times when unemployment rate is high. The sharp decrease in the 4th April 2020 might be due to the novel Covid-19 pandemic.
+
+
+
+```{r unemployment rate time series, message=FALSE, warning=FALSE}
+
+path="C:/Users/Alican/Desktop/google_trends.csv"
+google_trends_Data<-read_csv(path,col_types = cols(
+                        "month" = col_date(format="%Y-%m")))
+google_trends_Data %>%
+  mutate(month=as.yearmon(month))
+ggplot_google_trends<-google_trends_Data%>%ggplot(.,aes(month,is_ilani))+
+  geom_line(group = 1)+
+  theme(axis.text.x = element_text(angle = 60))+
+  labs(x="Date", y="Search Volume", title="Google Keyword Search Volume by months (2014-2020)")
+ggplotly(ggplot_google_trends)
+```
+
+
+
+Similar increasing trend by years( and also by months) can be observed from the histogram below:
+
+
+
+```{r histogram unemployment by years}
+#reading data
+path="C:/Users/Alican/Desktop/ue.csv"
+my_data1 <- read_csv(path,col_types = cols(
+                        "tarih" = col_date(format="%Y-%m")))
+#plotting 
+ggplot(my_data1,aes(x=factor(month(tarih)),y=Unemployment_Rate))+
+  geom_bar(stat="identity", aes(fill=month(tarih)),color="black")+
+  facet_wrap(~year(tarih))+
+  labs(x="Months",
+       title="Monthly Unemployment Rates by Years")
+
+```
+
+For a better understanding, both the keyword search volume and unemployment rate graph is shown in the same plot. For a better visualization, trends data is rescaled. The correlation between the two, now, can be observed better. As explained above, the sharp decrease in April mostly stems from the novel Covid-19 pandemic.
+
+
+
+```{r unemployment rate search volume comparison}
+#reading data
+path="C:/Users/Alican/Desktop/unemployment_combined.xlsx"
+combined_data <- read_excel(path)
+
+#Rescale the trends for better visualization
+combined_data$Trends<-(combined_data$Trends/10)*2
+#plotting
+ggplot_comparison<-combined_data %>%
+  mutate(tarih=as.yearmon(tarih))%>%
+  pivot_longer(!tarih,names_to="type",values_to="rate")%>%
+  ggplot(.,aes(tarih,rate,color=type))+
+  geom_line(size=1)+
+  labs(x="Date", y="Unemployment Rate and Search Volume", title="Unemployment Rate and Search Volume Comparison", color="Type")+
+  theme_minimal()
+ggplotly(ggplot_comparison)
+```
+
+Here, you can see the boxplots of the two. Slight increase from 2014 to 2018, and the sharp increase during 2019 can be observed in both of the graphs.
+
+```{r unemployment rate boxplot}
+ggplot<-my_data1%>%
+  ggplot(.,aes(factor(year(tarih)),Unemployment_Rate,fill=factor(year(tarih))))+
+  geom_boxplot(show.legend = FALSE)+
+  theme_classic()+
+  labs( x="year",y="Unemployment Rate",title=("Unemployment Rates by Year(2014-2020)"),subtitle ="Data is extracted from TÜİK*")
+ggplotly(ggplot)
+```
+```{r Keyword is_ilani google trends}
+ggplot<-google_trends_Data%>%
+  ggplot(.,aes(factor(year(month)),is_ilani,fill=factor(year(month))))+
+  geom_boxplot(show.legend = FALSE)+
+  theme_classic()+
+  labs( x="year",y=" Search Volume",title=("Google Keyword Trends by Year(2014-2020)"))
+ggplotly(ggplot)
+```
+
+
+# Covid-19 Cases
+
+For this part, number of Covid cases in Turkey and the volume of keyword "karantina" is analyzed. I expected to see a correlation between the search volume of the keyword and number of Covid cases before the inspection. Data of the number of Covid cases in Turkey is extracted from Turkey Health Ministry. As can be seen below, number of cases started to increase sharply during April and mitigated slowly. Slight increases can be observed during June and after August. To me, this changes are highly dependent on how the quarantine/social distance measures are followed, and also government's actions.
+
+```{r Covid Death plot, message=FALSE, warning=FALSE}
+#reading data
+path="C:/Users/Alican/Desktop/covid_19_data_tr.csv"
+covid_data<-read_csv(path)
+#data preprocessing
+covid_data$Last_Update <- as.Date(covid_data$Last_Update , "%m/%d/%Y")
+#plotting
+GGPLOT_covid<-covid_data%>%ggplot(.,aes(Last_Update,Daily_case))+
+  geom_line(group = 1,color="black")+
+  theme(axis.text.x = element_text(angle = 60))+
+  labs(x="Date", y="Number of Covid Deaths", title="Covid Deaths by day in Turkey")
+ggplotly(GGPLOT_covid)
+
+
+```
+
+
+
+From the search volume plot, we can observe the similar increase during March and April. Also, there are increases during some specific days. Those might be due to the government's nationwide quarantine decisions or  quarantine practices in metropolises. 
+
+
+```{r google trends plot ,message=FALSE, warning=FALSE}
+#reading
+path="C:/Users/Alican/Desktop/karantina_keyword.csv"
+google_trends_Data_1<-read_csv(path)
+#data preprocessing
+google_trends_Data_1$Date <- as.Date(google_trends_Data_1$Date , "%m/%d/%Y")
+#plotting
+ggplot_google_trends<-google_trends_Data_1%>%ggplot(.,aes(Date,karantina))+
+  geom_line(group = 1)+
+  theme(axis.text.x = element_text(angle = 60))+
+  labs(x="Date", y="Search Volume", title="Google Keyword trends by Month")
+ggplotly(ggplot_google_trends)
+```
+
+Two dataframe are joined for better inspection.
+
+```{r joining data, message=FALSE, warning=FALSE}
+#joining data
+joined_data<-covid_data%>% select(c("Last_Update","Daily_death"))%>%
+  rename(.,c("Date"="Last_Update"))%>%
+  inner_join(.,google_trends_Data_1)
+```
+After joining the data and some data manipulations, we can plot the time series plot of both daily number of death and search volume of "karantina" keyword in Turkey. From the plots, although lagged, correlation of the two can be observed during April.(During that times, whole world was talking about quarantine including Turkey.) Still, it is hard to say that there is significant correlation between the two, as the increase in daily death during autumn did not reflected on the search volume of "karantina". This might be because people got used to the quarantine rules and implementations, and normalized this as new reality. 
+
+
+```{r comparison of search volume and death}
+#plotting
+ggplot_comparison<-joined_data%>%
+  pivot_longer(!Date,names_to="type",values_to="Number")%>%
+  ggplot(.,aes(Date,Number,color=type))+
+  geom_line(size=1)+
+  labs(x="Date", y="", title="Comparison of Trend and Daily Covid Deaths", color="keyword vs daily")+
+  theme_minimal()
+ggplotly(ggplot_comparison)
+```
+
+
+From the monthly histogram plots, as shown above, the increase during April, the decreasing trend from May to August, and increasing trend starting from September can be observed clearly:
+
+
+
+```{r covid deaths histogram ,message=FALSE, warning=FALSE}
+
+GGPLOT<-ggplot(covid_data,aes(x=(day(Last_Update)),y=Daily_death))+
+  geom_bar(stat="identity", aes(fill=day(Last_Update)),color="black")+
+  facet_wrap(~month(Last_Update))+
+  labs(x="Days",
+       title="Daily Covid Deaths by Months")
+ggplotly(GGPLOT)
+```
+
+The boxplots are drawn to see the trends better. Starting from March until June, both boxplots show similar trends. However, starting from July, the increasing trend in the number of deaths does not reflect in the search volume of "karantina" keyword.  
+
+
+```{r covid deaths box plot}
+ggplot<-covid_data%>%
+  ggplot(.,aes(factor(month(Last_Update)),Daily_death,fill=factor(month(Last_Update))))+
+  geom_boxplot(show.legend = FALSE)+
+  theme_classic()+
+  labs( x="month",y="Daily Deaths by Covid",title=("Daily deaths from COVID-19 by months"),subtitle ="Data is extracted from Turkish Ministry of Health*")
+ggplotly(ggplot)
+```
+```{r karantina keyword google trends boxplot}
+ggplot<-google_trends_Data_1%>%
+  ggplot(.,aes(factor(month(Date)),karantina,fill=factor(month(Date))))+
+  geom_boxplot(show.legend = FALSE)+
+  theme_classic()+
+  labs( x="month",y=" Search Volume",title=("Google Keyword Trends by Months"))
+ggplotly(ggplot)
+```
+
+
+# Exchange Rates
+
+For this part, exchange rates of Turkish Liras is plotted from 2008 to 2020. I tried to understand if there is significant correlation between the exchange rate trend and search volume of keyword "ekonomik kriz.". For that purpose, first, euro-dollar exchange rate data is extracted from TCMB(Central Bank of the Republic of Turkey). Then, data is processed to make it ready for visualization.`ggplot2` and `plotly` packages are used for visualization part. Below, you can see the exchange rate of Turkish Liras. Exchange rate tends to be increasing in almost all months from 2008 till 2020. The sharp increase during 2018 is due to the political tension between USA and Turkey during that year.
+
+```{r reading dollar data,message=FALSE, warning=FALSE}
+#reading data
+path="C:/Users/Alican/Desktop/euro-dollar.csv"
+euro_dolar<- read_csv(path,guess_max = 100,
+                      col_types = cols(
+                        "Tarih" = col_date(format="%Y-%m"),
+                        "TP DK EUR A YTL" = col_number(),
+                        "TP DK USD A YTL" = col_number()
+                      ))
+
+```
+
+```{r data preprocessing}
+#NA values stems from the source information etc
+#rename
+names(euro_dolar)=c("Date", "euro_tl_exchange_rate","dollar_tl_exchange_rate") 
+#getting related columns
+euro_dolar_tidy<-euro_dolar %>%
+  as.data.frame %>%
+  slice(1:150) 
+#preparing data for visualization
+euro_dolar_2<-euro_dolar_tidy%>%
+  pivot_longer(!Date,names_to="exchange_type",values_to="rate")
+```
+
+
+
+
+```{r exchange rate plot}
+ggplot<-ggplot(euro_dolar_2,aes(Date,rate,color=exchange_type))+ 
+  geom_line(size=1)+
+  labs(x="Years", y="Exchange Rate", title="Exchange Rate by Years(2008-2020)", color="Exchange Rate Type")+
+  theme_minimal()
+
+ggplotly(ggplot)
+```
+
+For Google Trends search volume analysis, I did not include the year 2008 and 2009 since the keyword "ekonomik kriz" is not related to the increase in our exchange rate, instead, it is mostly related to the so-called "2008 Global Economic Crisis" which affected the whole world during the time. The "ekonomik kriz" keyword has been widely used in 2018, during which our exchange rate has been also in a sharp increase. However, in general, it is hard to tell that there is direct correlation between the two. 
+
+
+
+
+```{r ekonomik kriz keyword google trends }
+#read
+path="C:/Users/Alican/Desktop/ekonomik_kriz.csv"
+google_trends_Data_2<-read_csv(path,col_types = cols(
+                        "Date" = col_date(format="%Y-%m")))
+#plot
+ggplot<-google_trends_Data_2%>%
+  ggplot(.,aes(Date,ekonomik_kriz))+
+  geom_line(group = 1)+
+  theme(axis.text.x = element_text(angle = 60))+
+  labs(x="Date", y="Search Volume", title="Google keyword Trends by Month")+
+  theme_minimal()
+ggplotly(ggplot)
+```
+
+
+From the histogram plot by years, you can see the increasing trend in the exchange rate of Turkish Liras:
+
+```{r dollar exchange rate histogram,message=FALSE, warning=FALSE}
+
+GGPLOT<-ggplot(euro_dolar,aes(x=(month(Date)),y=dollar_tl_exchange_rate))+
+  geom_bar(stat="identity", aes(fill=month(Date)),color="black")+
+  facet_wrap(~year(Date))+
+  labs(x="months",
+       title="US Dollar Exchange Rate by Years")
+ggplotly(GGPLOT)
+```
+
+Although there is a significant increase in the exchange rate, the increase in the search volume is not that significant except the year 2008, during which USA-Turkey political tension has been intensified. As mentioned above, it is safe to say that there is no significant correlation between the two, although "ekonomik kriz" has been searched more, starting from 2018. This can be seen from the boxplots below: 
+ 
+
+```{r dollar-tl exchange rate boxplot,message=FALSE, warning=FALSE}
+ggplot<-euro_dolar%>%
+  ggplot(.,aes(factor(year(Date)),dollar_tl_exchange_rate,fill=factor(year(Date))))+
+  geom_boxplot(show.legend = FALSE)+
+  theme_classic()+
+  labs( x="year",y="US Dollar Exchange Rate",title=("US Dollar Exchange Rates by Years"),subtitle ="Data is extracted from TCMB*")
+ggplotly(ggplot)
+```
+
+```{r ekonomik kriz keyword boxplot}
+ggplot<-google_trends_Data_2%>%
+  ggplot(.,aes(factor(year(Date)),ekonomik_kriz,fill=factor(year(Date))))+
+  geom_boxplot(show.legend = FALSE)+
+  theme_classic()+
+  labs( x="year",y="Search Volume",title=("Google Keyword Trends by Years"))
+ggplotly(ggplot)
+```
+
+# Data Sources
+
+
+[Google Trends](https://trends.google.com/trends/?geo=TR)
+
+[TÜİK İşgücü İstatistikleri](https://biruni.tuik.gov.tr/medas/?kn=72&locale=tr)
+
+[Covid-19 in Turkey](https://www.kaggle.com/gkhan496/covid19-in-turkey)
+
+[TCMB Döviz Kuru](https://www.tcmb.gov.tr/wps/wcm/connect/TR/TCMB+TR)
