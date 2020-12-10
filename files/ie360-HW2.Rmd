@@ -1,0 +1,421 @@
+---
+title: "IE 360 HW2"
+author: "Alican Yılmaz"
+date: "12/10/2020"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(data.table,quietly = TRUE)
+library(ggplot2,quietly = TRUE)
+library(lubridate,quietly = TRUE)
+library(dplyr) 
+library(plotly)
+library(corrplot)
+library(zoo)
+library(tidyverse)
+```
+
+
+
+
+# Introduction {#introduction}
+
+In this work, several economy related measures are analyzed. The data of the related measures are obtained from the [Central Bank of the Republic of Turkey](https://evds2.tcmb.gov.tr/)'s website. With the help of the time series data, I will try to find answers to some research questions related with the data. To better understand and visualize the data, I will use several data manipulation and visualization packages such as `ggplot2` and `data.table`. As default, the starting and ending date is selected as "2012-01" and "2019-12" for all related data. However, in the cases where the data is missing before some specific date, then, that specific date has been chosen as threshold so that making comparison between the two time series gets easier.
+
+First research question for which I tried to find an answer is: **"Are Interest rate(personal and housing) statistics related to Unemployment Rate?"**. In that context, I will also look for the data of percentage change in the CPI(Consumer Price Index).
+
+Secondly, I will analyze the house sales and house unit price statistics. A comparison between the 3 major municipals of Turkey, namely İzmir, Ankara and İstanbul, will be made in terms of unit housing price.  Then, I will investigate if **the unit housing price statistics are related to exchange rates.** The reason why I choose these two statistics is that I, personally, have been observing significant increases in the house prices over the years. Likewise, the exchange rate of TL has also been increasing for years which made me wonder whether they have any significant correlation or not.  
+
+Finally, I will try to analyze if there is a relation between **Consumer Price Index and Producer Price Index in Turkey.** CPI focuses on the goods and services bought for consumption, whereas PPI targets the whole output of producers in Turkey. Also, In the producer price index, sales and taxes are not included for the producer's returns because these factors do not directly benefit the producer. Conversely, the consumer price index includes taxes and sales because these factors do directly impact the consumer by having to pay more for the goods and services.[1]
+
+# Interest Rate and Unemployment Rate Relation
+
+First, related data is extracted and data pre-processing is conducted to make it ready for further analysis. You can see the related R code by clicking the `Code` box on the upper right corner. 
+
+```{r reading data and maniplating date values, message=FALSE, warning=FALSE}
+setwd("C:/Users/Alican/Desktop")
+data_path="EVDS.csv"
+Whole_data=fread(data_path,encoding='UTF-8',nrows=98)
+#head(Whole_data,10)
+Whole_data=Whole_data[-(97:98), ]
+
+
+```
+
+At first look, we realized that date column and most of the numeric columns has been read as character format.To solve this issue, related conversion has been done. After the data pre-processing, our new date column is now of type "Date" and other related columns are of type "numeric":
+
+```{r data preprocessing, message=FALSE, warning=FALSE}
+#manipulating date values
+Whole_data$Tarih<-parse_date_time(Whole_data[,Tarih], "Ym")
+Whole_data[,Tarih:=as.Date(Tarih,format='%Y-%m-%d')]
+
+i<-colnames(Whole_data[,2:15])
+for (column in i) {
+Whole_data[,column:=gsub('\\.','',column)]
+Whole_data[,column:=as.numeric(column)]
+}
+
+unemployment_data=Whole_data[,c(1,14)]
+setnames(unemployment_data,names(unemployment_data),c("Date",'unemployment_rate'))  
+str(Whole_data)
+```
+
+
+```{r plotting unemployment ,message=FALSE, warning=FALSE}
+
+ggplot_unemployment<-unemployment_data%>%
+  ggplot(., aes(x=Date, y=unemployment_rate)) + geom_line()+
+  theme(axis.text.x = element_text(angle = 60))+
+  labs(x="Date", y="Unemployment Rate %", title="Unemployment Rate by Month(2012-2019)")+
+  theme(axis.text.x=element_text(angle=60, hjust=1))+
+  scale_x_date(date_breaks = "3 month", date_labels =  "%b %Y")
+
+
+
+ggplotly(ggplot_unemployment)
+
+
+```
+
+From the plot above, we can observe that unemployment rate shows cyclical pattern over the months. Also, there is a positive trend over the years. During the last months of 2016 and starting from May 2018 until Jan 2019, there is a sharp increase in the unemployment rate. Starting from December of 2018, unemployment rate exceeds 13 % threshold value. 
+Let's analyze the distribution of the unemployment rate measure for each year:
+
+```{r histogram UNEMPLOYMENT,message=FALSE, warning=FALSE}
+#plotting 
+ggplot_unemployment_data<-ggplot(unemployment_data)+
+  geom_histogram(binwidth = 0.2,aes(x=unemployment_rate,fill=..count..))+
+  scale_fill_gradient("Count", low = "green", high = "red")+
+  facet_wrap(~year(Date))+
+  labs(x="Unemployment Rate by Years",
+       title="Unemployment Rate Distribution by Years")
+ggplotly(ggplot_unemployment_data)
+```
+
+During 2012 and 2013,unemployment rate has never exceed 10 per cent. In contrast, during 2019 unemployment rate is quite high exceeding 12.8% threshold. In 2017, unemployment rate ranges between 10.2 and 10.6 for 9 months, 10.2 being the highest count.
+
+Now, let's analyze the interest rate statistics and then, try to reach a conclusion about their relationship with unemployment rate, if exists.
+
+First, interest rate data is extracted and continued with data manipulation process:
+
+```{r reading EVDS2,message=FALSE, warning=FALSE}
+setwd("C:/Users/Alican/Desktop")
+data_path="EVDS2.csv"
+Whole_data2=fread(data_path,encoding='UTF-8',nrows=98)
+#head(Whole_data2,10)
+Whole_data2=Whole_data2[-(97:98), ]
+
+
+```
+
+```{r data preprocess evds2,message=FALSE, warning=FALSE}
+#manipulating date values
+Whole_data2$Tarih<-parse_date_time(Whole_data2[,Tarih], "Ym")
+Whole_data2[,Tarih:=as.Date(Tarih,format='%Y-%m-%d')]
+#str(Whole_data2)
+
+i<-colnames(Whole_data2[,2:5])
+for (column in i) {
+Whole_data2[,column:=gsub('\\.','',column)]
+Whole_data2[,column:=as.numeric(column)]
+}
+Whole_data2<-Whole_data2 %>% 
+  rename(personal_interest_rate="TP KTF10",
+         house_interest_rate="TP KTF12",
+         Date="Tarih")  
+Whole_data2<-Whole_data2[,c(1,3,4)]
+```
+From the plot below, we can see that interest rate of both personal and housing are quite correlated with each other, which is not surprising. Now, let's see if any correlation exists between unemployment rate and interest rate.
+
+```{r plotting interest rate ,message=FALSE, warning=FALSE}
+ggplot_ir<-ggplot(Whole_data2)+geom_line(aes(Date,personal_interest_rate,color="personal_interest_rate"))+
+  geom_line(aes(Date,house_interest_rate,color="house_interest_rate"))+
+  scale_colour_manual("", 
+                      values = c("personal_interest_rate"="black", "house_interest_rate"="red")) +
+  scale_x_date(date_breaks="6 months",date_labels = "%b %Y")+
+  labs(x="Date",y="Interest Rate %",title="Monthly Interest Rate 2012-2019")+
+  theme(axis.text.x = element_text(angle = 60))
+  
+ggplotly(ggplot_ir)
+
+
+```
+
+```{r cpi perc_change data,message=FALSE, warning=FALSE}
+setwd("C:/Users/Alican/Desktop")
+data_path="cpi.csv"
+Whole_data6=fread(data_path,encoding='UTF-8',nrows=98)
+Whole_data6=Whole_data6[-(97:98), ]
+#manipulating date values
+Whole_data6$Date<-parse_date_time(Whole_data6[,Date], "Ym")
+Whole_data6[,Date:=as.Date(Date,format='%Y-%m-%d')]
+Whole_data6<-Whole_data6[,1:2]
+Whole_data6<-Whole_data6 %>% 
+  rename(CPI_yearly_change="CPI-perc-change")
+```
+
+For correlation analysis, first, we need to join the two data frames:
+
+
+```{r joining data,message=FALSE, warning=FALSE}
+
+combined_data<-Whole_data2 %>%
+  left_join(unemployment_data)%>%
+  left_join(Whole_data6)
+
+```
+
+Now, we can see that personal interest rates and house interest rates are significantly correlated, which is not surprising. Also, CPI(Consumer Price Index) percentage change is significantly correlated with both personal and housing interest rates. Moreover, we can say that, there is "moderate positive correlation" between unemployment rate and interest rate!
+
+```{r correlation analysis,message=FALSE, warning=FALSE}
+M<-cor(combined_data[,-1])
+corrplot(M, method="number")
+
+```
+
+Here, we can see the plots:
+
+```{r 4 plots,message=FALSE, warning=FALSE}
+ggplot_ir<-ggplot(combined_data)+geom_line(aes(Date,personal_interest_rate,color="personal_interest_rate"))+
+  geom_line(aes(Date,house_interest_rate,color="house_interest_rate"))+
+  geom_line(aes(Date,unemployment_rate,color="unemployment_rate"))+
+  geom_line(aes(Date,CPI_yearly_change,color="CPI_yearly_change"))+
+  scale_colour_manual("", 
+                      values = c("personal_interest_rate"="black", "house_interest_rate"="red", 
+                                 "unemployment_rate"="green","CPI_yearly_change"="blue")) +
+  scale_x_date(date_breaks="6 months",date_labels = "%b %Y")+
+  labs(x="Date",y="Rate %",title="Time Series from 2012 to 2020")+
+  theme(axis.text.x = element_text(angle = 60))
+  
+ggplotly(ggplot_ir)
+
+```
+
+
+# House Sales, House Unit Price and Exchange Rate Relation
+
+In this part, we will investigate the total house sales, housing unit prices and exchange rates by months.Then, their pattern and characteristics will be analyzed. Housing unit prices of three major municipals of Turkey will be analyzed. We will comment on their differences and correlation relationships. First, let's start with reading and pre-processing the data:  
+
+```{r reading house data,message=FALSE, warning=FALSE}
+setwd("C:/Users/Alican/Desktop")
+data_path="house.csv"
+Whole_data3=fread(data_path,encoding='UTF-8',nrows=98)
+
+```
+```{r house data preprocess,message=FALSE, warning=FALSE}
+#tail(Whole_data3,10)
+Whole_data3=Whole_data3[-(97:98), ]
+#manipulating date values
+Whole_data3$Date<-parse_date_time(Whole_data3[,Date], "Ym")
+Whole_data3[,Date:=as.Date(Date,format='%Y-%m-%d')]
+str(Whole_data3)
+
+setnames(Whole_data3,names(Whole_data3),c("Tarih","Total_sales","Housing_unit_turkey",'Housing_unit_ist','Housing_unit_ank','Housing_unit_izm'))
+Whole_data3$Total_sales<-as.numeric(gsub(",", "", Whole_data3$Total_sales))
+Whole_data3$Housing_unit_turkey<-as.numeric(gsub(",", "", Whole_data3$Housing_unit_turkey))
+Whole_data3$Housing_unit_ist<-as.numeric(gsub(",", "", Whole_data3$Housing_unit_ist))
+Whole_data3$Housing_unit_ank<-as.numeric(gsub(",", "", Whole_data3$Housing_unit_ank))
+Whole_data3$Housing_unit_izm<-as.numeric(gsub(",", "", Whole_data3$Housing_unit_izm))
+
+
+
+
+```
+
+## House Sales
+
+From the house sales plot below, we can observe that house sales oscillates around 100000 from 2013 till 2016. After 2016, this trend shows a slight increase. In almost all the years, house sales reach its peak value during the last month of the year. Similarly, December 2019 is the date during which more than 200.000 houses have been sold. This record sales amount was probably due to low credit interest rates, firm campaigns and title fees(tapu harcı)and VAT(KDV) discounts that would end on 31th December. 
+
+```{r house plotting ,message=FALSE, warning=FALSE}
+ggplot_house_sales<-ggplot(Whole_data3[Tarih>"2012-12-01"], aes(x=Tarih, y=Total_sales)) + geom_line(color="black")+
+  labs(x="Date",y="Total Sales", title="Total House Sales(Piece) 2013-2019")+
+  scale_x_date(date_breaks="6 months",date_labels = "%b %Y")+
+  theme(axis.text.x = element_text(angle = 60))
+ggplotly(ggplot_house_sales)
+    ```
+
+To understand the frequency and distribution of total sales better, we can use histogram and box-plot for each year from 2013 to 2019:
+
+```{r Histogram sales ,message=FALSE, warning=FALSE}
+
+#plotting 
+ggplot_total_sales_data<-ggplot(Whole_data3[Tarih>"2012-12-01"])+
+  geom_histogram(binwidth = 10000,aes(x=Total_sales,fill=..count..))+
+  scale_fill_gradient("Count", low = "green", high = "red")+
+  facet_wrap(~year(Tarih))+
+  labs(x="Total House Sales ",
+       title="Total House Sales Distribution by Years")
+ggplotly(ggplot_total_sales_data)
+```
+
+
+
+```{r plotting total sale,message=FALSE, warning=FALSE}
+
+#plotting 
+
+ggplot<-Whole_data3[Tarih>"2012-12-01"]%>%
+  ggplot(.,aes(factor(year(Tarih)),Total_sales,fill=factor(year(Tarih))))+
+  geom_boxplot(show.legend = FALSE)+
+  theme_classic()+
+  labs( x="year",y="Unemployment Rate",title=("Total House Sales 2013-2019"))
+ggplotly(ggplot)
+
+
+```
+
+
+By the histogram and box-plot above, we can analyze the distribution of total house sales for each year better. In 2013, almost half of the year the sales was around 100000. One outlier has been observed during the years 2014 and 2015. This outliers was seen during December for both of the cases. From the plots above, we can observe that variance and range of the sales has increased during 2018 and 2019.
+
+
+## House Unit Price
+
+House unit price refers to TL/sq m. From the graph below, we can observe that house unit price has an increasing trend over the years. I believe, there are several contributing factors that leads to that increase such as high demand and  worsening economic conditions of Turkey over the years). The similarity of the trends between the 3 municipals and Turkey can be seen from the plot. House unit prices in İstanbul have always been significantly higher than average house unit prices of Turkey  Similarly, Ankara has always been lower than the average of Turkey. Starting from 2017, housing unit prices of İzmir exceed the average house unit prices of Turkey.  
+
+```{r plotting unit price,message=FALSE, warning=FALSE}
+ggplot_house<-ggplot(Whole_data3)+geom_line(aes(Tarih,Housing_unit_turkey,color="Housing_unit_turkey"),size=1)+
+  geom_line(aes(Tarih,Housing_unit_ist,color="Housing_unit_ist"))+
+  geom_line(aes(Tarih,Housing_unit_ank,color="Housing_unit_ank"))+
+  geom_line(aes(Tarih,Housing_unit_izm,color="Housing_unit_izm"))+
+  scale_colour_manual("", 
+                      values = c("Housing_unit_turkey"="black", "Housing_unit_ist"="red", 
+                                 "Housing_unit_ank"="green","Housing_unit_izm"="blue")) +
+  scale_x_date(date_breaks="6 months",date_labels = "%b %Y")+
+  labs(x="Date",y="Housing unit price(TL/sq m)",title="Housing Unit Price by Cities (2012-2020)")+
+  theme(axis.text.x = element_text(angle = 60))
+  
+ggplotly(ggplot_house)
+```
+We can see their correlation statistically with the help of `corrplot` :
+
+```{r correlation analysis1,message=FALSE, warning=FALSE}
+M<-cor(Whole_data3[Tarih>"2012-12-01"][,2:5])
+corrplot(M, method="number")
+
+```
+
+
+## Exchange Rate and House Unit Price Relationship
+
+In this part, the relationship between exchange rate and House unit price in Turkey will be analyzed.
+ 
+```{r reading and pre-processing exchange ,message=FALSE, warning=FALSE}
+setwd("C:/Users/Alican/Desktop")
+data_path="exchange.csv"
+Whole_data5=fread(data_path,encoding='UTF-8',nrows=98)
+#tail(Whole_data5,10)
+Whole_data5=Whole_data5[-(97:98), ]
+#manipulating date values
+Whole_data5$Tarih<-parse_date_time(Whole_data5[,Tarih], "Ym")
+Whole_data5[,Tarih:=as.Date(Tarih,format='%Y-%m-%d')]
+setnames(Whole_data5,names(Whole_data5),c("Date","dollar_buying","euro_buying",'Housing_unit'))
+Whole_data5$Housing_unit<-as.numeric(gsub(",","", Whole_data5$Housing_unit))
+
+```
+
+Exchange rate tends to be increasing in almost all months from 2012 till 2020. The sharp increase during 2018 is due to the political tension between USA and Turkey during that year.
+
+```{r exchange rate ,message=FALSE, warning=FALSE}
+ggplot_house<-ggplot(Whole_data5)+geom_line(aes(Date,dollar_buying,color="dollar_buying"))+
+  geom_line(aes(Date,euro_buying,color="euro_buying"))+
+  scale_colour_manual("", 
+                      values = c("dollar_buying"="black", "euro_buying"="red", 
+                                 "Housing_unit"="green")) +
+  scale_x_date(date_breaks="6 months",date_labels = "%b %Y")+
+  labs(x="Date",y="Exchange Rate",title="Exchange Rate from 2012-2019")+
+  theme(axis.text.x = element_text(angle = 60))
+  
+ggplotly(ggplot_house)
+```
+
+
+Below, we can see the exchange rate distribution of euro/tl and dollar/tl for each years. We can see that euro has always been higher than dollar exhange rate. Moreover, with violin plot, we can observe the distribution shapes of the rates for each years.
+
+```{r fig.height=10, fig.width=12 }
+Whole_data5[,1:3] %>%
+  pivot_longer(.,-Date)%>%
+  ggplot(., aes(value, factor(name))) +
+  facet_wrap(~year(Date),scales="free")+
+  geom_violin(aes(fill = name))
+
+```
+
+
+
+
+We can see the correlation between housing unit price in Turkey and exchange rates:
+
+```{r correlation exchange ,message=FALSE, warning=FALSE }
+M<-cor(Whole_data5[,-1])
+corrplot(M, method="number")
+
+```
+
+
+There is quite significant correlation between house unit prices and exchange rates. So, we can conclude that our initial assumption was correct,that is, house prices are significantly related to euro/dollar exchange rate.
+
+
+
+# Consumer Price Index and Producer Price ındex Relation
+
+In this part, the relationship between CPI and PPI will be analyzed. First, Reading and pre-processing has been done. PPI values from 2012 to the end of 2016 is shown as NA, thus the analysis and plotting will be conducted starting from 2016. Here, our PPI values refer to Agriculture, Forestry and Fishing Production Price Index.
+
+
+```{r Reading and preprocessing cons-prod,message=FALSE, warning=FALSE}
+setwd("C:/Users/Alican/Desktop")
+data_path="cons-prod.csv"
+Whole_data4=fread(data_path,encoding='UTF-8',nrows=144)
+head(Whole_data4,10)
+#manipulating date values
+setnames(Whole_data4,names(Whole_data4),c("Date","Prod_price_index","consumer_price_index"))
+Whole_data4$Date<-parse_date_time(Whole_data4[,Date], "Ym")
+Whole_data4[,Date:=as.Date(Date,format='%Y-%m-%d')]
+
+```
+
+Below, you can see the PPI and CPI indices by months:
+
+```{r plot cons ,message=FALSE, warning=FALSE}
+ggplot_ppi_cpi<-ggplot(Whole_data4[Date>"2015-12-01"])+geom_line(aes(Date,Prod_price_index,color="Prod_price_index"))+
+  geom_line(aes(Date,consumer_price_index,color="consumer_price_index"))+
+  scale_colour_manual("", 
+                      values = c("Prod_price_index"="black", "consumer_price_index"="red")) +
+  scale_x_date(date_breaks="6 months",date_labels = "%b %Y")+
+  labs(x="Date",y="Price Index",title="Consumer and Producer Price Indices from 2016-2019")+
+  theme(axis.text.x = element_text(angle = 60))
+  
+ggplotly(ggplot_ppi_cpi)
+```
+
+
+Consumer Price Index has always been higher than producer price index. Both the consumer and producer price indices  have increasing trends, although the former has a sharper increasing trend. Also from the plots drawn before, we can see that CPI and PPI are sensitive to exchange rates.
+
+CPI and PPI has significant correlation. Below, you can see their correlations statistically:
+
+```{r correlation cpi ppi ,message=FALSE, warning=FALSE}
+M<-cor(Whole_data4[Date>"2015-12-01"][,2:3])
+corrplot(M, method="number")
+```
+
+# Conclusion
+
+In this homework, I tried to find answers to several research questions indicated in the [Introduction](#introduction) section. First, the relationship between unemployment rate, interest rate(both housing and personal) and CPI(Consumer Price Index) yearly change has been investigated. Before the relationship analysis, the characteristics of  unemployment rate has been analyzed in a more detailed way with the help of data visualization tools. From the correlation statistics, we have found that CPI yearly change and interest rate has a significant correlation,however, no significant correlation has been observed between unemployment rate and the others. Secondly, house sales statistics and exchange rates relationship has been analyzed. To understand their characteristics better, several data visualization methods and plots have been used . There is no significant correlation observed between total sales and unit housing price, however, exchange rates and house unit prices has been found to be significantly correlated. Finally, Consumer price index(CPI) and producer price index(PPI) relationship has been analyzed. A significant correlation between the two has been found.
+
+# References
+
+[TCMB](https://evds2.tcmb.gov.tr/)
+
+[investopedia/cpi-ppi relationship](https://www.investopedia.com/ask/answers/08/ppi-vs-cpi.asp#:~:text=The%20CPI%20includes%20imports%3B%20the,not%20directly%20benefit%20the%20producer.)
+
+
+
+
+
+
