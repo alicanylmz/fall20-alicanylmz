@@ -9,5 +9,5 @@ In this page, you will see my work throughout the course IE-360.
 [Here](files/ie360hw1.html) is my Homework.
 
 ### Homework 2 
-[Here](files/ie360hw2) is my Homework
+[Here](files/ie360hw2.html) is my Homework
 
