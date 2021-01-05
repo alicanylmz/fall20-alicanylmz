@@ -11,3 +11,6 @@ In this page, you will see my work throughout the course IE-360.
 ### Homework 2 
 [Here](files/ie360hw2.html) is my Homework
 
+### Homework 3
+[Here](files/hw3_ie360.html) is my Homework
+
