@@ -1,0 +1,379 @@
+---
+title: "IE 360 HW 3"
+author: "Alican Yılmaz"
+date: "12/30/2020"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(data.table,quietly = TRUE)
+library(lubridate,quietly = TRUE)
+library(ggplot2,quietly = TRUE)
+library(forecast,quietly = TRUE)
+library(plotly)
+library(corrplot)
+library(zoo)
+library(GGally)
+library(dynlm)
+library(dplyr) 
+```
+
+# Time Series Regression for Predicting Macro Economic Indıcators
+
+In this homework, I aimed to extend the analyses I have performed with the data from Data Delivery System:[https://evds2.tcmb.gov.tr/](https://evds2.tcmb.gov.tr/). More specifically, I want to forecast the given indicator: *Consumer Price Index- Clothing and Footwear* at a monthly level. Before diving into Time series Regression analysis, first, I need to analyze the characteristics of my target variable(CPI of Clothing and Footwear) ,and select my independent variables which I will put into the model. 
+
+
+## Introduction
+
+First, related data is obtained from the abovementioned source. You can see the reading and pre-processing steps(and all the coding sections in this work) by clicking the `Code` box on the top right corner at each section.Let's try to understand our target variable: Consumer Price Index of Clothing and Footwear. For that, I will use `ggplot2` and some other time-series/visualization packages.
+
+
+
+```{r reading data, message=FALSE, warning=FALSE, echo=FALSE}
+setwd("C:/Users/Alican/Desktop")
+data_path="ie360_hw3_data.csv"
+hw3_data=fread(data_path,encoding='UTF-8',nrows=151)
+head(hw3_data,10)
+
+```
+
+```{r first inspection2, message=FALSE, warning=FALSE}
+colnames(hw3_data)
+
+summary(hw3_data)
+```
+
+
+From the initial inspection, we observe that some of the CCI(Consumer Confidence Index) data is missing. We will handle this later if we use them as independent variables. Excluding those, date column starts from 2008-06 for all variables and ends at 2020-12 except  Clothing and Footwear CPI variables. 
+
+*  The data that I have chosen for my initial analysis are namely: 
+  + "Clothing"(Clothing CPI),
+  + "US_DOLLAR"(US Dollar Exchange Rate),
+  + "Personal_INTEREST_RATE"(Personal Weighted Average Interest Rates For Banks Loans),
+  + "Household_Fin_CCI"(Financial situation of household),
+  + "CCI-General"(Seasonally unadjusted Consumer Confidence Index on General economic situation),
+  + "CCI_Semi_durable"(Seasonally unadjusted Consumer Confidence Index on spending money on semi-durable goods).
+
+```{r first inspection1, message=FALSE, warning=FALSE}
+str(hw3_data)
+```
+
+
+Our `Date` column is of "Char" format. First, let's convert it to date format:
+
+```{r char to date  , message=FALSE, warning=FALSE}
+hw3_data$Date<-parse_date_time(hw3_data[,Date], "Ym")
+hw3_data[,Date:=as.Date(Date,format='%Y-%m-%d')]
+```
+# Understanding Clothing and Footwear CPI
+
+To understand our two candidates as dependent variable better, they are plotted.
+
+```{r first inspection, message=FALSE, warning=FALSE}
+ts_data<-ts(hw3_data,start = c(2008, 6),frequency=12)
+ggplot<-ggplot2::autoplot(ts_data[,c("Clothing","Footwear")]) +
+  theme_classic()+
+  labs( x="Date",y="% CPI of Clothing and Footwear",title=("CPI of Footwear and Clothing 2008-2020"))
+ggplotly(ggplot)
+```
+
+
+From the graph, we observe that both indicators are, not surprisingly, significantly correlated. And CPI of footwear has  been higher than of clothing for all years. The cyclical pattern(seasonality effect) and positive trend can also be observed in both of the indicators. 
+
+Below, you can see the positive trend better:
+
+```{r trend line, warning=FALSE, message=FALSE}
+ggplot<-ggplot2::autoplot(ts_data[,c("Clothing","Footwear")]) +
+  theme_classic()+
+  labs( x="Date",y="% CPI of Clothing and Footwear",title=("CPI of Footwear and Clothing 2008-2020"))+
+  geom_smooth(method = "lm")
+ggplotly(ggplot)
+```
+
+
+
+Since, we have various candidates for independent variables, let's analyze their timely behaviours with the help of `zoo` package:
+
+```{r all time series plots in one, fig.height=8, fig.width=12 }
+
+
+ts_data1 <- ts_data[,-1]
+colnames(ts_data1)<-c("Clothing","Footwear","US_Dollar","Per_int_rate","CCI","Household_CCI","CCI-General","CCI_semi_durable")
+
+plot(zoo(ts_data1))
+
+```
+
+
+From the graphs above, we can see the general trends and patterns throughout the years. Unsurprisingly, US_dollar and and CPI of footwear and clothes have similar positive trends. US_dollar could be a good predictor for our target variable, excluding the seasonality. On the other hand, CCI charts shows different behaviors. A sharp decrease can be observed in these values during the last months of 2018. Contrary, personal interest rate shows a sharp increase during those times. However, it is hard to reach a conclusion on whether they have significant effect on our target variable. 
+
+# Correlation Analysis
+
+To conduct a successful regression analysis, one must pay attention the correlation between the variables. Multicollinearity could be a problem when we fit the model and interpret the results. First, let's see the correlation between the variables:
+
+```{r correlation ,message=FALSE, warning=FALSE, fig.width=12,fig.height=8 }
+
+hw3_data_complete<-hw3_data[complete.cases(hw3_data), ]
+
+M<-cor(hw3_data_complete[,-1])
+corrplot(M, method="number")
+
+```
+
+Here, we can see that Clothing, Footwear and Us dollar exchange rate are significantly correlated. Similarly, CCI-General and Household Financial Status CCI are significantly correlated. Thus, we need to omit using both of them in our regression analysis(See the Multicollinearity problem above). CCI values and CPI of Footwear and Clothes are "negatively correlated".
+
+Below, Scatterplots of each pair of numeric variable are drawn on the left part of the figure. Pearson correlation is displayed on the right which are the same as what we've found. And in the diagonal you see the variable distribution.
+
+```{r pressure, echo=FALSE}
+
+ggpairs(data.frame(hw3_data_complete[,c("Clothing", "US_DOLLAR","CCI_Semi_durable" )]))
+```
+
+# Regression Analysis
+
+Our target is CPI of Clothing and our independent variables are Us_dollar and CCI of Semi-durable goods. Below you can see the regression summary:
+
+```{r regression analysis, echo=FALSE}
+
+fit=lm( Clothing ~ US_DOLLAR + CCI_Semi_durable,hw3_data_complete)
+summary(fit)
+
+
+```
+
+From the summary, we can see that both of the variables are statistically significant. Also, %88 of the variance can be explained by the predictors. From the summary table the regression equation is found to be : 
+
+- Clothing CPI= -90.198 + 22.431 * US_Dollar + 1.808 * CCI_Semi_durable
+
+Now, let's see the fitted values vs. predicted values graph:
+
+
+```{r regression analysis continuation, echo=FALSE}
+dat=data.table(Data = hw3_data_complete[,"Clothing"],Fitted
+= fitted(fit))
+ggplot(dat,aes(x=Data.Clothing, y=Fitted)) +
+ geom_point() +
+ ylab("Fitted (predicted values)") +
+ xlab("Data (actual values)") +
+ ggtitle("Consumer Price Index of Clothing 2012-2020") +
+ geom_abline(intercept=0, slope=1)
+
+
+
+```
+
+From the Fitted vs Actual plot, we can observe that errors are distributed equally around the mean. However, the variance seems to be increased when the data is greater than 200. Also, due to seasonality effect on the target variable, the errors do not seem to be normally distributed which means, our model does not explain the CPI perfectly, yet. Keeping those into the mind, let's continue with the more detailed analysis of the residuals: 
+
+# Residual Analysis
+
+```{r residual analysis, echo=FALSE}
+
+checkresiduals(fit)
+
+
+```
+
+
+When residuals are correlated, there is some information left over which should be accounted for in the model in order to obtain better forecasts. `checkresiduals` helps us to see the pattern and autocorrelation of the residuals. From the first residual graph, the seasonality effect is observed better. 2nd chart shows us that there exist a significant autocorrelation between some of the months.(positive autocorrelation in lag 6-12 and negative autocorrelation in lag 3). Histogram chart shows how the residuals are distributed with respect to normal distribution.
+
+## Residuals vs Predictor Plot
+
+Analyzing residuals against the fitted value and residual against the predictors would also give us more insight about how correct our model is. Residual vs Predictor plot is a scatter plot of the residuals on the y axis and the predictor values on the x axis. Optimally, we expect to see the mean of the residuals to be 0 and the distribution of the residuals around the mean is random, that is, no significant pattern exists in the residual values. 
+
+```{r residual analysis contuniation1, echo=FALSE}
+
+df <- as.data.frame(hw3_data_complete)
+df[,"Residuals"] <- as.numeric(residuals(fit))
+p1 <- ggplot(df, aes(x=Clothing, y=Residuals)) +
+ geom_point()
+p2 <- ggplot(df, aes(x=US_DOLLAR, y=Residuals)) +
+ geom_point()
+p3 <- ggplot(df, aes(x=CCI_Semi_durable, y=Residuals)) +
+ geom_point()
+gridExtra::grid.arrange(p1, p2, p3, nrow=2)
+```
+
+From the residual plots above, we can conclude that the residuals are not completely random and show a pattern although the mean seems to be around 0. That means there are some variations in the CPI of Clothing that our model could not explain very well. Although the residuals vs fitted plot will not give us a new information, still we can perform the analysis:
+
+```{r residual analysis contuniation, echo=FALSE}
+
+df <- as.data.frame(hw3_data_complete)
+df[,"Residuals"] <- as.numeric(residuals(fit))
+df[,"Fitted"] <- as.numeric(fitted(fit))
+
+ggplot(df, aes(x=Fitted, y=Residuals)) +
+ geom_point()
+
+```
+
+Again, we observe that variance is greater as the fitted value exceed 200 and mean is around 0.
+
+# Outlier Analysis
+
+One of the weak points of the regression model is that it is quite sensitive to outliers. Although, we have a broader picture about the outliers, due to the previously observed time series plots, still, it is safer to conduct this analysis seperately:
+
+
+```{r outlier analysis, echo=FALSE, message=FALSE}
+
+ggplot(df, aes(x=US_DOLLAR, y=Clothing)) +
+ geom_point()+
+ geom_smooth(method = "lm")+
+ labs(x="us dollar exchange rate", y="CPI Clothing", title= "CPI vs Exchange Rate 2012-2020")
+```
+
+From the graph above, we can see that there is no outlier that can distort the regression model significantly.
+
+# Adding Seasonality Effect to the Model
+
+As shown in the very first time-series plot of the work, our target value shows a cyclical pattern. The effect of this seasonality has manifested itself in our residual analyses that we have conducted before. Now, let's take into account the seasonality effect in the model.
+
+```{r our clothing data , message=FALSE, warning=FALSE}
+
+ggplot<-ggplot(hw3_data_complete[,c("Date","Clothing")]) +
+  geom_line(aes(Date,Clothing))+
+  labs( x="Date",y="CPI of Clothing ",title=("CPI of Clothing 2012-2020"))
+ggplotly(ggplot)
+```
+
+Above, you can see the peak months and the corresponding CPI values.
+
+```{r adding months to model1, message=FALSE, warning=FALSE, echo=FALSE}
+
+#add month information
+month=seq(1,12,by=1)
+hw3_data_complete=cbind(hw3_data_complete,month)
+hw3_data_complete
+
+```
+
+Here, we add month effect to our regression model. Now, the model takes into account the differences due to months. From the regression summary, we can say that some of the months significantly affect the CPI value of Clothing. Residual analysis is also conducted below. Although the correlation due to seasonality is not significant now, still, we have lag 1 autocorrelation. We will try to handle this in the next chapter.
+
+
+```{r adding months to model, message=FALSE, warning=FALSE}
+
+fit <- lm(Clothing~US_DOLLAR+as.factor(month)+CCI_Semi_durable, data = hw3_data_complete)
+summary(fit)
+checkresiduals(fit,lag=12)
+
+
+```
+
+```{r adding months to model contuniation, message=FALSE, warning=FALSE}
+
+#get fitted values
+hw3_data_complete[,fitted:=fitted(fit)]
+hw3_data_complete[,residual:=residuals(fit)]
+ 
+p1<-hw3_data_complete%>%
+  ggplot(aes(x=fitted, y=residual)) + geom_point()
+
+p2<-hw3_data_complete %>%
+    ggplot(aes(x=fitted, y=Clothing)) + 
+  geom_point() +
+  geom_abline(slope=1, intercept=0)
+
+gridExtra::grid.arrange(p1, p2, p3, nrow=2)
+
+```
+
+
+## Prediction 
+
+Below, you can see the predicted vs actual values month by month. From the residual analysis, and also from the graph below, it can be concluded that the variance of the residuals tends to increase starting from 2018. The reason of this strange behavior could also be the result of the political tensions in Turkey during that times(Priest Brunson crisis) which directly affects the exchange rates and distorts the predictions. 
+
+```{r check, message=FALSE, warning=FALSE}
+
+cols <- c("predicted" = "orange", "actual" = "blue")
+ggplot<-ggplot() + 
+  geom_line(data = hw3_data_complete, aes(x = Date, y = fitted,color = "predicted")) +
+  geom_line(data = hw3_data_complete, aes(x = Date, y = Clothing,color = "actual")) +
+  xlab('time') +
+  ylab('CPI Clothing') +
+  scale_color_manual(values = cols)
+ggplotly(ggplot)
+```
+
+
+
+# Residual Analysis - Autoregressive Model
+
+We added the seasonality effect as well as our predictor variables, but still the autocorrelation in the residuals persists. Now, let's try to account for that in our model.
+
+
+```{r Autoregressive model for residuals1., message=FALSE, warning=FALSE}
+
+
+fit <- lm(Clothing~US_DOLLAR+as.factor(month)+CCI_Semi_durable, data = hw3_data_complete)
+
+acf(fit$residuals)
+pacf(fit$residuals)
+
+```
+
+From the autocorrelation and partial autocorrelation charts above, we can see that first lag value is above 0.6 which is highly significant. This means, our model's residual is extremely affected by the residual of the day before. Below, we can see the relation better:  
+
+```{r Autoregressive model for residuals., message=FALSE, warning=FALSE}
+
+ggplot()+geom_point(aes(x=fit$residuals[-1],y=fit$residuals[-length(fit$residuals)]))+
+  labs(x="residuals",y="One month lagged residuals", title="Autocorrelation in residuals")+
+  theme_classic()
+```
+
+
+
+```{r adding lag to model, message=FALSE, warning=FALSE}
+#adding lag1 column
+hw3_data_complete[,"lag1_residual"] <- lag(hw3_data_complete$residual, 1)
+# first order autoregressive model for residuals
+autoregressive_fit<-lm(residual~lag1_residual,hw3_data_complete)
+summary(autoregressive_fit)
+```
+
+```{r new prediction after adding autoregressive component of residuals, message=FALSE, warning=FALSE}
+x<-as.list(fitted(autoregressive_fit))
+y<-0
+y<-append(y,x)
+hw3_data_complete[,residual_pred:=as.numeric(y)]
+
+hw3_data_complete$new_predict=hw3_data_complete$fitted+hw3_data_complete$residual_pred
+```
+
+```{r predict vs actual chart, message=FALSE, warning=FALSE}
+
+cols <- c("predicted" = "orange", "actual" = "blue")
+ggplot<-ggplot() + 
+  geom_line(data = hw3_data_complete, aes(x = Date, y = new_predict,color = "predicted")) +
+  geom_line(data = hw3_data_complete, aes(x = Date, y = Clothing,color = "actual")) +
+  xlab('time') +
+  ylab('CPI Clothing') +
+  scale_color_manual(values = cols)
+ggplotly(ggplot)
+```
+
+Below, you can see the new time series chart of residuals after including the autoregressive model applied to residuals. Now, we eliminated the autocorrelation problem in the residuals which is a good sign! However, it should not be overlooked that the abnormality during the fall season of 2018 still manifests itself in the model.  
+
+
+```{r new residuals, message=FALSE, warning=FALSE}
+
+hw3_data_complete[,"new_residual"]=hw3_data_complete$Clothing-hw3_data_complete$new_predict
+ggplot<-ggplot() + 
+  geom_line(data = hw3_data_complete, aes(x = Date, y = new_residual))+
+  theme_classic()+
+  labs(y="new residuals",title="New Residuals After Including Autoregressive Model of Residuals")
+ggplotly(ggplot)
+
+```
+
+```{r acf of new residuals, message=FALSE, warning=FALSE}
+
+acf(hw3_data_complete$new_residual)
+
+```
+
