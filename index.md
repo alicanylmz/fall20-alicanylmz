@@ -13,3 +13,6 @@ In this page, you will see my work throughout the course IE-360.
 
 ### Homework 3 - Time Series Regression for Predicting Macroeconomic Indicators
 [Here](files/hw3_ie360.html) is my Homework.
+
+### Homework 4 - Time Series Forecasting of Turkish Electricity Consumption 
+[Here]() is my Homework.
