@@ -1,0 +1,411 @@
+---
+title: "ie360 hw"
+author: "Alican Yılmaz"
+date: "1/19/2021"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE,message=FALSE, warning=FALSE)
+```
+
+# Introduction
+
+In this study, I will work on the Turkish Electricity Consumption Data, and make forecast on the daily electricity consumption of Turkey. The data is available on [EPİAŞ](https://seffaflik.epias.com.tr/transparency/tuketim/gerceklesen-tuketim/gercek-zamanli-tuketim.xhtml) website. The starting date of the data is "1st of January 2017" and ending date is "8th of January 2021" as indicated in the project description. My predictions will include the time zone of 14 days starting from 9th of January 2021. As mentioned in the project description, the core aim of the study is to make the data as stationary as possible, and to implement an "ARIMA model" for prediction, and finally to be able to test the overall performance of the prediction with some statistical error measures.
+
+Outline of the study will be:
+
+* [Exploratory Data Analysis](#exploratory-data-analysis)
+  - Removing Outliers if necessary
+* [Time Series Decomposition](#time-series-decomposition)
+* [Stationarity](#stationarity)
+* [ACF/PACF Analysis](#acf/pacf-and-choosing-the-right Model)
+* [Choosing the Right Model](#choosing-the-right-model)
+* [Forecasting First Model](#forecasting-with-arima(3,0,1)-model)
+* [Forecasting Second Model](#forecasting-with-arima(2,0,5)(0,0,2)[3]-model)
+* [Forecasting Third Model](#forecasting-third-approach)
+* [Testing the Results](#testing-the-results)
+* [Conclusion](#conclusion)
+
+# Exploratory Data Analysis
+
+First, let's read the data and do the necessary adjustments to make it ready for our analysis further.
+
+```{r exploratory data analysis1}
+library('ggplot2')
+library('forecast')
+library('tseries')
+library("data.table")
+library("lubridate")
+library("zoo")
+
+```
+
+The conversion from char to date and numeric is done first. Then daily mean consumption value of each date is calculated to further be used in our model. 
+
+```{r READ, echo=FALSE}
+consumption = fread('RealTimeConsumption-01012017-08012021.csv', header=TRUE)
+
+names(consumption)[names(consumption) == "Consumption (MWh)"] <- "cons"
+consumption[,Date:=as.Date(Date,"%d.%m.%Y")]
+consumption[,cons:=as.numeric(gsub(",", "", cons))]
+daily_consumption=consumption[,list(mean_consumption=mean(cons,na.rm=T)),by=list(Date)]
+```
+
+
+
+First, let's plot our model:
+
+```{r exploratory data analysis2}
+
+
+ggplot(daily_consumption, aes(Date, mean_consumption)) + geom_line()  + labs(x="Date",y="Consumption(Mwh)",title="Daily Mean Electricity Consumption")
+
+
+```
+
+From the graph, it can be seen that, our data is not stationary(i.e variance and mean is not invariant of time). Also, we can observe some outliers during specific times which can affect our model significantly. First, we will try to remove the outliers with the help of `tsclean` function: 
+
+```{r mean take}
+is.ts(daily_consumption)
+daily_consumption
+cons_ts = ts(daily_consumption[, c('mean_consumption')])
+
+daily_consumption$clean_cons = tsclean(cons_ts)
+
+ggplot() + 
+  geom_line(data = daily_consumption, aes(x = Date, y = clean_cons)) + ylab('Cleaned mean consumption')
+
+
+```
+
+
+Below, we can see the difference better. Some outliers were removed and linear interpolation is used on the series. 
+
+
+
+```{r cleaned data}
+ts_data<-ts(daily_consumption,start = c(2017, 1,1),frequency = 365)
+autoplot(ts_data[,c("mean_consumption","clean_cons")]) +
+  theme_classic()+
+  labs( x="Date",y="Consumption(Mwh)",title=("Daily Mean Electricity Consumption(Outliers removed vs not removed)"))
+
+```
+
+From the plot below, we can see the general trend better:
+
+```{r ma plots}
+daily_consumption$cons_ma = ma(daily_consumption$clean_cons, order=7) # using the clean count with no outliers
+daily_consumption$cons_ma30 = ma(daily_consumption$clean_cons, order=30)
+
+
+ggplot() + 
+  geom_line(data = daily_consumption, aes(x = Date, y = clean_cons, colour = "Counts")) +
+  geom_line(data = daily_consumption, aes(x = Date, y = cons_ma,   colour = "Weekly Moving Average"))  +
+  geom_line(data = daily_consumption, aes(x = Date, y = cons_ma30, colour = "Monthly Moving Average"))  +
+  ylab('Electricity Consumption')
+
+```
+
+
+# Time Series Decomposition
+
+Now, we can decompose the data:
+
+```{r decompose}
+ts_data1 = ts(na.omit(daily_consumption$clean_cons), frequency=7) 
+decomp = decompose(ts_data1)
+plot(decomp) 
+
+```
+
+Although, we still have some outlier days in our data,it seems a lot better than before in terms of randomness and normality.
+
+# Stationarity
+
+
+We can check whether our data is stationary or not by `KPSS Unit Root Test`.
+
+```{r stationarity test}
+require(urca)
+unt_test=ur.kpss(decomp$random) 
+summary(unt_test)
+
+```
+Test statistics is 0.0033, which is quite low. Comparing the value with critical value at alpha level of 0.01 (0.0033<0.347)
+, we can say that our data is stationary. 
+
+
+# ACF/PACF and Choosing the Right Model
+
+
+Now, let's check the autocorrelation with `Acf` and `Pacf` functions:
+
+```{r autocorrelation check for stationarity, echo=FALSE}
+
+tsdisplay(decomp$random)
+
+```
+
+From the plots, we can see that there is significant autocorrelation in lag-1. We can try ARIMA(1,0,0) or ARIMA(0,0,1). And then, test the results with AIC and BIC criterion. Also, we can use `auto.arima` to find the best fit: 
+
+```{r model fitting1}
+library(stats)
+fitted=auto.arima(decomp$random,seasonal=F,trace=T)
+```
+The best ARIMA model after auto.arima is applied  is found to be ARIMA(0,0,1).  Auto.arima takes into account AIC and BIC values when deciding the best model. The lower the value, the better the model is. Below, we can see the coefficients of the model and corresponding AIC and BIC values.
+.
+```{r modelfitting2}
+random<-decomp$random
+model <- arima(random, order=c(0,0,1))
+print(model)
+AIC(model)
+BIC(model)
+
+```
+
+Now, let's check the residuals to understand better the result, and whether it is necessary to make any further improvement in our model. 
+
+
+```{r autocorrelation check for stationarity2, echo=FALSE}
+
+tsdisplay(residuals(model), lag.max=15, main='(0,0,1) Model Residuals') 
+
+```
+
+From the PACF, we can see gradual decrease in lag_3,lag_6 and so on. We can try to add seasonal component to the model. 
+
+```{r residual check1}
+
+
+x=ts(decomp$random,freq=3)
+model <-auto.arima(x, seasonal=T, trace=T)
+print(model)
+tsdisplay(residuals(model), lag.max=15, main='ARIMA(2,0,1)(0,0,2)[3] Model Residuals') 
+
+
+```
+
+After checking again the ACF and PACF, we observe a correlation at lag 4 and 5. Thus we can add MA(5) term to our model. 
+
+```{r model fitting3}
+model<-arima(x,order=c(2,0,5),seasonal = c(0,0,2))
+print(model)
+BIC(model)
+tsdisplay(residuals(model), lag.max=15, main='ARIMA(2,0,5)(0,0,2)[3] Model Residuals')
+
+
+```
+
+Here, AIC is found to be 23048.57, which is lower than the previous model. Although, BIC value of the model is a little higher by its very nature, it is still low compared to first model.
+
+# Choosing the Right Model
+
+
+Due to the increase in the lag_3 of ACF, we can try to add AR(3) component to our model which `auto.arima` didn't trace in finding the best model:
+
+```{r arima model selection process2}
+
+model <-arima(decomp$random, order=c(3,0,1))
+print(model)
+
+
+```
+
+AIC value is found to be "23087.03" which is lower than of the first model that auto.arima found. We can use this model, also!
+
+
+```{r arima model selection process}
+
+tsdisplay(residuals(model), lag.max=15, main='(3,0,1) Model Residuals') 
+
+
+```
+
+After ACF/PACF analysis and iteration process, we obtained two candidate model:
+  * ARIMA(3,0,1)
+  * ARIMA(2,0,5)(0,0,2)[3] 
+
+We can use both of them for our prediction, and then finally decide on which one is better by statistical accuracy tests.(e.g WMAPE, MAPE etc.)
+
+
+Below, you can see the fitted model(ARIMA(3,0,1)) and random components, where blue line refers to fitted model and orange line refers to the random components. 
+
+```{r arima fitting (3,0,1)}
+model <-arima(decomp$random, order=c(3,0,1))
+model_fitted<-decomp$random-residuals(model)
+model_fitted_transformed <- model_fitted+decomp$trend+decomp$seasonal
+# combining the two fr autoplot
+comb_ts <- cbind(decomp$random, model_fitted)
+ts_comb<-ts(comb_ts,start = c(2017, 1,1),frequency = 365)
+
+
+autoplot(ts_comb, xlab = "Year", ylab = "Electricity Consumption-Random Term",main="Electricity Consumption-Random Term(2017-2021)")
+#points(model_fitted, type = "l", col = 2, lty = 2)
+
+```
+```{r data prep}
+library("tseries")    
+comb_ts <- cbind(ts_data1, model_fitted_transformed)
+ts_comb<-ts(comb_ts,start = c(2017, 1,1),frequency = 365)
+```
+
+
+
+Similarly, you can see the fitted model(ARIMA(3,0,1)) after transformation and the real observed data, below.
+
+
+```{r figure}
+autoplot(ts_comb, xlab = "Year", ylab = "Electricity Consumption",main="Electricity Consumption Model vs Observed(2017-2021)")
+```
+
+# Forecasting with ARIMA(3,0,1) Model
+
+Now, we can start forecasting our model:
+
+
+```{r forecasting1, echo=FALSE}
+
+model_forecast<- predict(model, n.ahead = 14)$pred
+
+last_trend_value <-as.numeric(rep(tail(decomp$trend[!is.na(decomp$trend)],1),14))
+seasonality=as.numeric(tail(decomp$seasonal,14))
+#back to the original series
+model_forecast=model_forecast+last_trend_value+seasonality
+model_forecast
+```
+Our forecasted values for the following 14 days are found to be `34046.41 30770.94 34843.91 35824.72 36089.05 36178.62 35867.32 34215.31 30916.62 34912.02 35823.71 36054.46 36143.19,35847.57`, respectively. Now, we can continue with the second ARIMA model.
+
+# Forecasting with ARIMA(2,0,5)(0,0,2)[3] Model
+
+
+```{r forecasting2}
+x=ts(decomp$random,freq=3)
+model<-arima(x,order=c(2,0,5),seasonal = c(0,0,2))
+model_forecast2<- predict(model, n.ahead = 14)$pred
+
+last_trend_value <-as.numeric(rep(tail(decomp$trend[!is.na(decomp$trend)],1),14))
+seasonality=as.numeric(tail(decomp$seasonal,14))
+#back to the original series
+model_forecast2=model_forecast2+last_trend_value+seasonality
+model_forecast2
+```
+
+Our forecasted values for the following 14 days are found to be `33548.86 30807.16 35008.19 35818.69 36017.98 36131.99 35850.22 34213.30 30922.33 34919.69 35829.30 36056.46 36142.40 35845.72`, respectively with our seasonal arima model.
+
+
+
+# Forecasting Third Approach
+
+We know that our data have weekly seasonality. So, let's first take difference of lag_7:
+
+```{r forecasting 3}
+daily_consumption[,differ:=clean_cons-shift(clean_cons,7)]
+ggplot(daily_consumption,aes(x=Date)) + geom_line(aes(y=differ))
+unt_test=ur.kpss(daily_consumption$differ) 
+summary(unt_test)
+```
+From the unit root test, we can now say that our data is stationary. Since we know that there is weekly seasonality, first the difference is taken and then arima model is applied. The best model is found to be `ARIMA(2,0,1)(2,0,0)[7]`.
+
+```{r residual analysiss}
+tsdisplay(daily_consumption$differ)
+daily_consumption$differ<-ts(daily_consumption$differ,freq=7)
+fitted=auto.arima(daily_consumption$differ,seasonal = T,trace=T)
+tsdisplay(residuals(fitted), lag.max=21, main='(2,0,1)(2,0,0)[7] Model Residuals') 
+
+```
+
+Let's get the forecast results:
+
+```{r forecasted results}
+fitted
+nahead=14
+forecasted=forecast(fitted,h=nahead)
+forecasted
+```
+
+
+
+# Testing the results
+
+
+
+```{r testing1}
+#forecasted value with second approach
+temporary=copy(daily_consumption)
+
+test=daily_consumption[1:nahead]
+test[,mean_consumption:=NA]
+test$Date=max(daily_consumption$Date)+c(1:nahead)
+test[,predicted_differ:=as.numeric(forecasted$mean)]
+
+temporary=rbindlist(list(temporary,test),fill=T,use.names=T)
+temporary[is.na(predicted_differ),predicted_differ:=differ] # past values are known
+
+# transforming to the original scale
+temporary[,forecastval:=predicted_differ+shift(mean_consumption,7)]
+tail(temporary,14)
+
+```
+Since our data takes difference at lag_7, last 7 forecasted values could not be calculated. However, we can take those forecasted values as if they were real values, to obtain the last 7 days forecast prediction too.
+
+
+```{r testing2}
+temporary$mean_consumption[1470:1476]=temporary$forecastval[1470:1476]
+temporary[,forecastval:=predicted_differ+shift(mean_consumption,7)]
+tail(temporary,14)
+```
+
+Now that we have two different forecasted value for the upcoming 14 days, we can see which one did better with the help of statistical tests. Before testing the results with real values, I need to obtain the real observed data of the forecasted dates as I did in the beginning.
+
+```{r testing3}
+consumption_14_Days = fread('test-09012021-23012021.csv', header=TRUE)
+setnames(consumption_14_Days,"Tüketim Miktarý (MWh)","cons")
+consumption_14_Days[,Tarih:=as.Date(Tarih,"%d.%m.%Y")]
+consumption_14_Days[,cons:=as.numeric(gsub(",", "", cons))]
+daily_consumption_14=consumption_14_Days[,list(mean_consumption=mean(cons,na.rm=T)),by=list(Tarih)]
+daily_consumption_14=daily_consumption_14[1:14]
+```
+
+Now that, we obtain the real values for the forecasted day, we can calculate how well our forecast predicted. Below you can see the accuracy test function:
+
+```{r error function}
+error_test <- function(actual, forecasted){
+  n=length(actual)
+  error = actual-forecasted
+  mean=mean(actual)
+  sd=sd(actual)
+  bias = sum(error)/sum(actual)
+  mape = sum(abs(error/actual))/n
+  mad = sum(abs(error))/n
+  wmape = mad/mean
+  df = data.frame(n,mean,sd,bias,mape,mad,wmape)
+  return(df)
+}
+
+```
+
+
+After putting the results into the `error_test` function, we observe that WMAPE value of the second model is found to have the lowest WMAPE value. Thus, we can select `ARIMA(2,0,1)(2,0,0)[7]` as the best model among the three.
+
+```{r testing4}
+acurracy_for_first_model=error_test(daily_consumption_14$mean_consumption,model_forecast)
+acurracy_for_first_model
+accuracy_for_second_model=error_test(daily_consumption_14$mean_consumption, model_forecast2)
+accuracy_for_second_model
+accuracy_for_third_model=error_test(daily_consumption_14$mean_consumption, temporary[1470:1483,forecastval])
+accuracy_for_third_model
+```
+
+# Conclusion
+
+In this work, I tried to predict the Turkish electricity consumption based on the previous data which is obtained from [EPİAŞ](https://seffaflik.epias.com.tr/transparency/tuketim/gerceklesen-tuketim/gercek-zamanli-tuketim.xhtml). First, the data is analyzed and visualized to understand it better. The data was not stationary as expected, since it has weekly, monthly seasonality, moving trend and also some outliers which correspond to religious holidays, special days etc. Still, we managed to obtain a stationary series with some approaches. We also tested our results statistically. With the help of ACF/PACF plots, we tried to obtain best ARIMA models iteratively. Finally, we had 3 different ARIMA models to be tested. For testing, we get the original data of the forecasted day and applied WMAPE to decide on which model predicts better. Based on that test, we found that `ARIMA(2,0,1)(2,0,0)[7]` model predicted slightly better than the other two.
+
+
+
