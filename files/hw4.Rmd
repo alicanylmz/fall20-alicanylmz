@@ -80,7 +80,7 @@ cons_ts = ts(daily_consumption[, c('mean_consumption')])
 daily_consumption$clean_cons = tsclean(cons_ts)
 
 ggplot() + 
-  geom_line(data = daily_consumption, aes(x = Date, y = clean_cons)) + ylab('Cleaned mean consumption')
+  geom_line(data = daily_consumption, aes(x = Date, y = clean_cons)) + labs(x="Date",y='Cleaned mean consumption',title="Daily Mean Electricity Consumption(Outliers removed)")
 
 
 ```
@@ -109,7 +109,7 @@ ggplot() +
   geom_line(data = daily_consumption, aes(x = Date, y = clean_cons, colour = "Counts")) +
   geom_line(data = daily_consumption, aes(x = Date, y = cons_ma,   colour = "Weekly Moving Average"))  +
   geom_line(data = daily_consumption, aes(x = Date, y = cons_ma30, colour = "Monthly Moving Average"))  +
-  ylab('Electricity Consumption')
+  labs(y='Electricity Consumption',title="Moving Average Trend Plot")
 
 ```
 
@@ -307,7 +307,7 @@ We know that our data have weekly seasonality. So, let's first take difference o
 
 ```{r forecasting 3}
 daily_consumption[,differ:=clean_cons-shift(clean_cons,7)]
-ggplot(daily_consumption,aes(x=Date)) + geom_line(aes(y=differ))
+ggplot(daily_consumption,aes(x=Date)) + geom_line(aes(y=differ))+ labs(x="Date",y="Differenced Electricity Consumption",title="Differenced Electricity Consumption Plot")
 unt_test=ur.kpss(daily_consumption$differ) 
 summary(unt_test)
 ```
@@ -392,7 +392,7 @@ error_test <- function(actual, forecasted){
 ```
 
 
-After putting the results into the `error_test` function, we observe that WMAPE value of the second model is found to have the lowest WMAPE value. Thus, we can select `ARIMA(2,0,1)(2,0,0)[7]` as the best model among the three.
+After putting the results into the `error_test` function, we observe that WMAPE value of the second model is found to have the lowest WMAPE value. Thus, we can select `ARIMA(2,0,5)(0,0,2)[3]` as the best model among the three.
 
 ```{r testing4}
 acurracy_for_first_model=error_test(daily_consumption_14$mean_consumption,model_forecast)
@@ -405,7 +405,7 @@ accuracy_for_third_model
 
 # Conclusion
 
-In this work, I tried to predict the Turkish electricity consumption based on the previous data which is obtained from [EPİAŞ](https://seffaflik.epias.com.tr/transparency/tuketim/gerceklesen-tuketim/gercek-zamanli-tuketim.xhtml). First, the data is analyzed and visualized to understand it better. The data was not stationary as expected, since it has weekly, monthly seasonality, moving trend and also some outliers which correspond to religious holidays, special days etc. Still, we managed to obtain a stationary series with some approaches. We also tested our results statistically. With the help of ACF/PACF plots, we tried to obtain best ARIMA models iteratively. Finally, we had 3 different ARIMA models to be tested. For testing, we get the original data of the forecasted day and applied WMAPE to decide on which model predicts better. Based on that test, we found that `ARIMA(2,0,1)(2,0,0)[7]` model predicted slightly better than the other two.
+In this work, I tried to predict the Turkish electricity consumption based on the previous data which is obtained from [EPİAŞ](https://seffaflik.epias.com.tr/transparency/tuketim/gerceklesen-tuketim/gercek-zamanli-tuketim.xhtml). First, the data is analyzed and visualized to understand it better. The data was not stationary as expected, since it has weekly, monthly seasonality, moving trend and also some outliers which correspond to religious holidays, special days etc. Still, we managed to obtain a stationary series with some approaches. We also tested our results statistically. With the help of ACF/PACF plots, we tried to obtain best ARIMA models iteratively. Finally, we had 3 different ARIMA models to be tested. For testing, we get the original data of the forecasted day and applied WMAPE to decide on which model predicts better. Based on that test, we found that `ARIMA(2,0,5)(0,0,2)[3]` model predicted slightly better than the other two.
 
 
 
