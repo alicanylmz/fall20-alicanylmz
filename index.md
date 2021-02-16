@@ -16,3 +16,6 @@ In this page, you will see my work throughout the course IE-360.
 
 ### Homework 4 - Time Series Forecasting of Turkish Electricity Consumption 
 [Here](files/hw4.html) is my Homework.
+
+### Project - Turkey Electricity Consumption
+[Here](files/IE360_Project_Report.html) is our Project
