@@ -18,4 +18,4 @@ In this page, you will see my work throughout the course IE-360.
 [Here](files/hw4.html) is my Homework.
 
 ### Project - Turkey Electricity Consumption
-[Here](files/IE360_Project_Report.html) is our Project Report
+[Here](files/project/IE360_Project_Report.html) is our Project Report
